@@ -32,7 +32,16 @@ function guid() {
                .substring(1);
   }
   return s4(); // + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
+}
+
+Array.prototype.insert = function (index, item) {
+  this.splice(index, 0, item);
 };
+
+function zeroPad(num, places) {
+  var zero = places - num.toString().length + 1;
+  return Array(+(zero > 0 && zero)).join("0") + num;
+}
 
 function findNode(tree, nodeId) {
     if (tree.id == nodeId) {
@@ -47,21 +56,34 @@ function findNode(tree, nodeId) {
         }
     }
     return null;
-};
+}
 
 function nodeWithId(id) {
     return {
         id: id,
-        name: id,
+        name: null,
+        displayName: id,
         data: {},
         parent: null,
-        children: []
+        children: [],
+        
+        updateChildrenNames: function() {
+            var i = 0;
+            for (; i < this.children.length; i++) {
+                this.children[i].name = zeroPad(i, 3) + ' ' + this.children[i].displayName;
+            }
+        }
     };
-};
+}
+
+function insertNode(tree, node, index) {
+    tree.children.insert(index, node);
+    node.parent = tree;
+    tree.updateChildrenNames();
+}
 
 function addNode(tree, node) {
-    tree.children.push(node);
-    node.parent = tree;
+    insertNode(tree, node, tree.children.length);
 }
 
 function removeNode(node) {
@@ -72,6 +94,7 @@ function removeNode(node) {
             break;
         }
     }
+    node.parent.updateChildrenNames();
     node.parent = null;
 }
 
@@ -79,6 +102,7 @@ function init(){
     
     var nodeClickDoesAdd = true;
     var tree = nodeWithId('USER:' + guid());
+    tree.name = '000 ' + tree.displayName;
     var i = 0;
     for (i = 0; i < 10; i++) {
         var node = nodeWithId(guid());
@@ -172,7 +196,7 @@ function init(){
         //your node.
         onCreateLabel: function(label, node) {
             label.id = node.id;            
-            label.innerHTML = node.name;
+            label.innerHTML = node.name.substring(4);
             label.onclick = function() {
                 var modelNode = findNode(tree, node.id);
                 if (nodeClickDoesAdd) {

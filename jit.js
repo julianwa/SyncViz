@@ -5974,6 +5974,7 @@ Graph.Op = {
                       elem.ignore = true;
                     } else {
                       //Update node data information
+                      elem.name = graphNode.name;
                       var graphNodeData = graphNode.data;
                       for(var prop in graphNodeData) {
                         if(nodeModes && ($.indexOf(nodeModes, prop) > -1)) {
