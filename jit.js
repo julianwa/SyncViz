@@ -5043,9 +5043,17 @@ Graph.Util = {
     */
     eachNode: function(graph, action, flags) {
         var filter = this.filter(flags);
+        var nodeIds = [];
         for(var i in graph.nodes) {
-          if(filter(graph.nodes[i])) action(graph.nodes[i]);
+          if(filter(graph.nodes[i])) {
+              nodeIds.push(graph.nodes[i].id);
+          }
         } 
+        var i = 0;
+        nodeIds.sort();
+        for (; i < nodeIds.length; i++) {
+            action(graph.nodes[nodeIds[i]]);
+        }
     },
     
     /*
@@ -5104,6 +5112,7 @@ Graph.Util = {
     */
     eachAdjacency: function(node, action, flags) {
         var adj = node.adjacencies, filter = this.filter(flags);
+        var actionParams = [];
         for(var id in adj) {
           var a = adj[id];
           if(filter(a)) {
@@ -5112,8 +5121,23 @@ Graph.Util = {
               a.nodeFrom = a.nodeTo;
               a.nodeTo = tmp;
             }
-            action(a, id);
+            actionParams.push({ adjacency:a, id:id });
           }
+        }
+        
+        actionParams.sort(function(a, b) {
+            var nodeNameA = String(a.adjacency.nodeTo.name);
+            var nodeNameB = String(b.adjacency.nodeTo.name);
+            if (nodeNameA == nodeNameB) {
+                return a.adjacency.id < b.adjacency.id;
+            } else {
+                return nodeNameA.localeCompare(nodeNameB);
+            }
+        });
+        
+        var i = 0;
+        for (; i < actionParams.length; i++) {
+            action(actionParams[i].adjacency, actionParams[i].id);
         }
     },
 

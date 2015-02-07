@@ -82,7 +82,7 @@ function init(){
     var i = 0;
     for (i = 0; i < 10; i++) {
         var node = nodeWithId(guid());
-        // node.name = i;
+        node.name = String(i) + ' ' + node.id;
         addNode(tree, node);
     }
     
@@ -177,8 +177,8 @@ function init(){
                 var modelNode = findNode(tree, node.id);
                 if (nodeClickDoesAdd) {
                     var subtree = nodeWithId(node.id);
-                    var prefix = node.id.indexOf('USER:') == 0 ? 'JRNL:' : 'PAGE:';
-                    addNode(modelNode, nodeWithId(prefix + guid()));
+                    var id = guid();
+                    addNode(modelNode, nodeWithId(id));
                 } else {
                     removeNode(modelNode);
                 }
