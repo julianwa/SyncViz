@@ -9287,6 +9287,10 @@ $jit.ST= (function() {
                 this.op.sum(subtree, $.extend({ type: 'fade:seq' }, onComplete || {}));
             }
         },
+        
+        morph: function(json, opt, extraModes) {
+            this.op.morph(json, opt, extraModes);
+        },
 
         /*
            Method: removeSubtree

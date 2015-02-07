@@ -38,8 +38,13 @@ function findNode(tree, nodeId) {
     if (tree.id == nodeId) {
         return tree;
     }
-    for (subtree in tree.children) {
-        return findNode(subtree, nodeId);   
+    var i = 0;
+    for (; i < tree.children.length; i++) {
+        var result = findNode(tree.children[i], nodeId);   
+        if (result)
+        {
+            return result;
+        }
     }
     return null;
 };
@@ -49,30 +54,37 @@ function nodeWithId(id) {
         id: id,
         name: id,
         data: {},
+        parent: null,
         children: []
     };
 };
 
+function addNode(tree, node) {
+    tree.children.push(node);
+    node.parent = tree;
+}
+
+function removeNode(node) {
+    var i = 0;
+    for (; i < node.parent.children.length; i++) {
+        if (node.parent.children[i].id == node.id) {
+            node.parent.children.splice(i, 1);
+            break;
+        }
+    }
+    node.parent = null;
+}
 
 function init(){
     
     var nodeClickDoesAdd = true;
     var tree = nodeWithId('USER:' + guid());
-    
-    //A client-side tree generator
-    var getTree = (function() {
-        var i = 0;
-        return function(nodeId, level) {
-            // subtree = findNode(tree, nodeId);
-            // subtree.children.push({
-            //     id: guid(),
-            //     name: "0.2",
-            //     data: {},
-            //     children: []
-            // });
-            return tree;
-        };
-    })();
+    var i = 0;
+    for (i = 0; i < 10; i++) {
+        var node = nodeWithId(guid());
+        // node.name = i;
+        addNode(tree, node);
+    }
     
     //Implement a node rendering function called 'nodeline' that plots a straight line
     //when contracting or expanding a subtree.
@@ -162,26 +174,23 @@ function init(){
             label.id = node.id;            
             label.innerHTML = node.name;
             label.onclick = function() {
+                var modelNode = findNode(tree, node.id);
                 if (nodeClickDoesAdd) {
                     var subtree = nodeWithId(node.id);
                     var prefix = node.id.indexOf('USER:') == 0 ? 'JRNL:' : 'PAGE:';
-                    subtree.children.push(nodeWithId(prefix + guid()));
-                    st.addSubtree(subtree, 'animate', {
-                            hideLabels: false,
-                            onComplete: function() {
-                                    Log.write('subtree added');
-                                }
-                            });
+                    addNode(modelNode, nodeWithId(prefix + guid()));
                 } else {
-                    if (node.id.indexOf('USER:') != 0) {
-                        st.removeSubtree(node.id, true, 'animate', {
-                            hideLabels: false,
-                            onComplete: function() {
-                                Log.write('subtree removed');
-                            }
-                        });
-                    }
+                    removeNode(modelNode);
                 }
+                
+                st.morph(tree, {
+                    hideLabels: false,
+                    type: 'fade',
+                    duration: 1000,
+                    onComplete: function() {
+                        st.refresh();
+                    }
+                });
             };
             //set label styles
             var style = label.style;
