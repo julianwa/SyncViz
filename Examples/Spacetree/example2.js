@@ -56,6 +56,7 @@ function nodeWithId(id) {
 
 function init(){
     
+    var nodeClickDoesAdd = true;
     var tree = nodeWithId('USER:' + guid());
     
     //A client-side tree generator
@@ -161,19 +162,26 @@ function init(){
             label.id = node.id;            
             label.innerHTML = node.name;
             label.onclick = function() {
-                console.log('onclick node=' + node.id + ' selected:' + node.selected);
-                var subtree = nodeWithId(node.id);
-                var prefix = node.id.indexOf('USER:') == 0 ? 'JRNL:' : 'PAGE:';
-                subtree.children.push(nodeWithId(prefix + guid()));
-                st.addSubtree(subtree, 
-                    'animate', 
-                    {
-                        hideLabels: false,
-                        onComplete: function() {
-                                Log.write("subtree added");
+                if (nodeClickDoesAdd) {
+                    var subtree = nodeWithId(node.id);
+                    var prefix = node.id.indexOf('USER:') == 0 ? 'JRNL:' : 'PAGE:';
+                    subtree.children.push(nodeWithId(prefix + guid()));
+                    st.addSubtree(subtree, 'animate', {
+                            hideLabels: false,
+                            onComplete: function() {
+                                    Log.write('subtree added');
+                                }
+                            });
+                } else {
+                    if (node.id.indexOf('USER:') != 0) {
+                        st.removeSubtree(node.id, true, 'animate', {
+                            hideLabels: false,
+                            onComplete: function() {
+                                Log.write('subtree removed');
                             }
                         });
-                // node.children.push());
+                    }
+                }
             };
             //set label styles
             var style = label.style;
@@ -181,7 +189,7 @@ function init(){
             style.height = 17 + 'px';            
             style.cursor = 'pointer';
             style.color = '#fff';
-            //style.backgroundColor = '#1a1a1a';
+            // style.backgroundColor = '#1a1a1a';
             style.fontSize = '0.8em';
             style.textAlign= 'center';
             style.textDecoration = 'underline';
@@ -232,23 +240,25 @@ function init(){
       return document.getElementById(id);  
     };
 
-    var top = get('r-top'), 
-    left = get('r-left'), 
-    bottom = get('r-bottom'), 
-    right = get('r-right');
+    (function configureRadioSelector() {
+        var add = get('r-add'), 
+        remove = get('r-remove');
+        function changeHandler() {
+            nodeClickDoesAdd = add.checked;
+        };
+        onchange = add.onchange = remove.onchange = changeHandler;
     
-    function changeHandler() {
-        if(this.checked) {
-            top.disabled = bottom.disabled = right.disabled = left.disabled = true;
-            st.switchPosition(this.value, "animate", {
-                onComplete: function(){
-                    top.disabled = bottom.disabled = right.disabled = left.disabled = false;
+        $(document).ready(function() {
+            $(document).keypress(function(e) {
+                if (String.fromCharCode(e.keyCode) == 'j') {
+                    if (add.checked) {
+                        remove.checked = true;
+                    } else if (remove.checked) {
+                        add.checked = true;
+                    }
+                    changeHandler();
                 }
             });
-        }
-    };
-    
-    top.onchange = left.onchange = bottom.onchange = right.onchange = changeHandler;
-    //end
-
+        });
+    })();
 }
