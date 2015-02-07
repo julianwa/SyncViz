@@ -116,7 +116,7 @@ function init(){
     var st = new $jit.ST({
         'injectInto': 'infovis',
         //set duration for the animation
-        duration: 800,
+        duration: 300,
         //set animation transition type
         transition: $jit.Trans.Quart.easeInOut,
         //set distance between node and its children
@@ -186,7 +186,6 @@ function init(){
                 st.morph(tree, {
                     hideLabels: false,
                     type: 'fade',
-                    duration: 1000,
                     onComplete: function() {
                         st.refresh();
                     }
