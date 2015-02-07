@@ -1,4 +1,5 @@
 var labelType, useGradients, nativeTextSupport, animate;
+var nodeClickDoesAdd = true;
 
 (function() {
   var ua = navigator.userAgent,
@@ -58,9 +59,10 @@ function findNode(tree, nodeId) {
     return null;
 }
 
-function nodeWithId(id) {
+function nodeWithId(id, treeId) {
     return {
-        id: id,
+        treeId: treeId,
+        id: treeId + ' ' + id,
         name: null,
         displayName: id,
         data: {},
@@ -79,6 +81,7 @@ function nodeWithId(id) {
 function insertNode(tree, node, index) {
     tree.children.insert(index, node);
     node.parent = tree;
+    node.treeId = node.parent.treeId;
     tree.updateChildrenNames();
 }
 
@@ -98,47 +101,24 @@ function removeNode(node) {
     node.parent = null;
 }
 
-function init(){
-    
-    var nodeClickDoesAdd = true;
-    var tree = nodeWithId('USER:' + guid());
+function generateTree() {
+    var id = 'USER:' + guid();
+    var treeId = guid();
+    var tree = nodeWithId(id, treeId);
     tree.name = '000 ' + tree.displayName;
-    var i = 0;
-    for (i = 0; i < 10; i++) {
-        var node = nodeWithId(guid());
-        node.name = String(i) + ' ' + node.id;
-        addNode(tree, node);
-    }
-    
-    //Implement a node rendering function called 'nodeline' that plots a straight line
-    //when contracting or expanding a subtree.
-    $jit.ST.Plot.NodeTypes.implement({
-        'nodeline': {
-          'render': function(node, canvas, animating) {
-                if(animating === 'expand' || animating === 'contract') {
-                  var pos = node.pos.getc(true), nconfig = this.node, data = node.data;
-                  var width  = nconfig.width, height = nconfig.height;
-                  var algnPos = this.getAlignedPos(pos, width, height);
-                  var ctx = canvas.getCtx(), ort = this.config.orientation;
-                  ctx.beginPath();
-                  if(ort == 'left' || ort == 'right') {
-                      ctx.moveTo(algnPos.x, algnPos.y + height / 2);
-                      ctx.lineTo(algnPos.x + width, algnPos.y + height / 2);
-                  } else {
-                      ctx.moveTo(algnPos.x + width / 2, algnPos.y);
-                      ctx.lineTo(algnPos.x + width / 2, algnPos.y + height);
-                  }
-                  ctx.stroke();
-              } 
-          }
-        }
-          
-    });
+    // var i = 0;
+    // for (i = 0; i < 10; i++) {
+    //     var node = nodeWithId(i, treeId);
+    //     addNode(tree, node);
+    // }
+    return tree;
+}
 
+function initSpacetree(tree, injectInfo) {
     //init Spacetree
     //Create a new ST instance
     var st = new $jit.ST({
-        'injectInto': 'infovis',
+        'injectInto': injectInfo,
         //set duration for the animation
         duration: 300,
         //set animation transition type
@@ -150,6 +130,7 @@ function init(){
         levelsToShow: 2,
         //set node and edge styles
         //set overridable=true for styling individual
+        offsetX: 100,
         //nodes or edges
         Node: {
             height: 20,
@@ -170,19 +151,6 @@ function init(){
             overridable: true
         },
         
-        //Add a request method for requesting on-demand json trees. 
-        //This method gets called when a node
-        //is clicked and its subtree has a smaller depth
-        //than the one specified by the levelsToShow parameter.
-        //In that case a subtree is requested and is added to the dataset.
-        //This method is asynchronous, so you can make an Ajax request for that
-        //subtree and then handle it to the onComplete callback.
-        //Here we just use a client-side tree generator (the getTree function).
-        // request: function(nodeId, level, onComplete) {
-      //     var ans = getTree(nodeId, level);
-      //     onComplete.onComplete(nodeId, ans);
-      //   },
-        
         onBeforeCompute: function(node){
             Log.write("loading " + node.name);
         },
@@ -200,8 +168,9 @@ function init(){
             label.onclick = function() {
                 var modelNode = findNode(tree, node.id);
                 if (nodeClickDoesAdd) {
-                    var subtree = nodeWithId(node.id);
-                    var id = guid();
+                    var subtree = nodeWithId(node.id, tree.treeId);
+                    var prefix = node.id.indexOf('USER') == -1 ? 'PAGE:' : 'JRNL:';
+                    var id = prefix + guid();
                     addNode(modelNode, nodeWithId(id));
                 } else {
                     removeNode(modelNode);
@@ -260,21 +229,45 @@ function init(){
             }
         }
     });
-    //load json data
+
     st.loadJSON(tree);
-    //compute node positions and layout
     st.compute();
-    //emulate a click on the root node.
     st.onClick(st.root);
-    //end
-    //Add event handlers to switch spacetree orientation.
-   function get(id) {
-      return document.getElementById(id);  
-    };
+}
+
+function init() {
+        
+    //Implement a node rendering function called 'nodeline' that plots a straight line
+    //when contracting or expanding a subtree.
+    $jit.ST.Plot.NodeTypes.implement({
+        'nodeline': {
+          'render': function(node, canvas, animating) {
+                if(animating === 'expand' || animating === 'contract') {
+                  var pos = node.pos.getc(true), nconfig = this.node, data = node.data;
+                  var width  = nconfig.width, height = nconfig.height;
+                  var algnPos = this.getAlignedPos(pos, width, height);
+                  var ctx = canvas.getCtx(), ort = this.config.orientation;
+                  ctx.beginPath();
+                  if(ort == 'left' || ort == 'right') {
+                      ctx.moveTo(algnPos.x, algnPos.y + height / 2);
+                      ctx.lineTo(algnPos.x + width, algnPos.y + height / 2);
+                  } else {
+                      ctx.moveTo(algnPos.x + width / 2, algnPos.y);
+                      ctx.lineTo(algnPos.x + width / 2, algnPos.y + height);
+                  }
+                  ctx.stroke();
+              } 
+          }
+        }   
+    });
+    
+    initSpacetree(generateTree(), 'infovis1');
+    initSpacetree(generateTree(), 'infovis2');
+    initSpacetree(generateTree(), 'infovis3');
 
     (function configureRadioSelector() {
-        var add = get('r-add'), 
-        remove = get('r-remove');
+        var add = document.getElementById('r-add'), 
+        remove = document.getElementById('r-remove');
         function changeHandler() {
             nodeClickDoesAdd = add.checked;
         };
@@ -282,7 +275,7 @@ function init(){
     
         $(document).ready(function() {
             $(document).keypress(function(e) {
-                if (String.fromCharCode(e.keyCode) == 'j') {
+                if (String.fromCharCode(e.keyCode) == 'a') {
                     if (add.checked) {
                         remove.checked = true;
                     } else if (remove.checked) {
