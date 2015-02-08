@@ -59,12 +59,13 @@ function findNode(tree, nodeId) {
     return null;
 }
 
-function nodeWithId(id, treeId) {
+function nodeWithId(rawId, treeId) {
     return {
+        rawId: rawId,
         treeId: treeId,
-        id: treeId + ' ' + id,
+        id: treeId + ' ' + rawId,
         name: null,
-        displayName: id,
+        displayName: rawId,
         data: {},
         parent: null,
         children: [],
@@ -73,6 +74,14 @@ function nodeWithId(id, treeId) {
             var i = 0;
             for (; i < this.children.length; i++) {
                 this.children[i].name = zeroPad(i, 3) + ' ' + this.children[i].displayName;
+            }
+        },
+        
+        updateIdRecursive: function() {
+            this.id = this.treeId + ' ' + this.rawId;
+            var i = 0;
+            for (; i < this.children.length; i++) {
+                this.children[i].updateIdRecursive();
             }
         }
     };
@@ -112,6 +121,24 @@ function generateTree() {
     //     addNode(tree, node);
     // }
     return tree;
+}
+
+function cloneTree(tree, clonedTreeId) {
+    if (!clonedTreeId) {
+        clonedTreeId = guid();
+    }
+    var clonedTree = nodeWithId(tree.rawId, clonedTreeId);
+    var i = 0;
+    for (; i < tree.children.length; i++) {
+        addNode(clonedTree, cloneTree(tree.children[i], clonedTreeId));
+    }
+    clonedTree.updateChildrenNames();
+    
+    if (!clonedTree.parent) {
+        clonedTree.name = '000 ' + clonedTree.rawId;
+    }
+
+    return clonedTree;
 }
 
 function initSpacetree(tree, injectInfo) {
@@ -233,6 +260,8 @@ function initSpacetree(tree, injectInfo) {
     st.loadJSON(tree);
     st.compute();
     st.onClick(st.root);
+    
+    return st;
 }
 
 function init() {
@@ -261,9 +290,13 @@ function init() {
         }   
     });
     
-    initSpacetree(generateTree(), 'infovis1');
-    initSpacetree(generateTree(), 'infovis2');
-    initSpacetree(generateTree(), 'infovis3');
+    var leftModel = generateTree();
+    var centerModel = cloneTree(leftModel);
+    var rightModel = generateTree();
+
+    var leftST = initSpacetree(leftModel, 'infovis1');    
+    var centerST = initSpacetree(centerModel, 'infovis2');
+    var rightST = initSpacetree(rightModel, 'infovis3');
 
     (function configureRadioSelector() {
         var add = document.getElementById('r-add'), 
@@ -282,6 +315,16 @@ function init() {
                         add.checked = true;
                     }
                     changeHandler();
+                } else if (String.fromCharCode(e.keyCode) == 's') {
+                    console.log('Merge left');
+                    centerModel = cloneTree(leftModel, centerModel.treeId);
+                    centerST.morph(centerModel, {
+                        hideLabels: false,
+                        type: 'fade',
+                        onComplete: function() {
+                            centerST.refresh();
+                        }
+                    });
                 }
             });
         });
