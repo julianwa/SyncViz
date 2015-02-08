@@ -193,6 +193,7 @@ function initSpacetree(tree, injectInfo) {
             label.id = node.id;            
             label.innerHTML = node.name.substring(4);
             label.onclick = function() {
+                // TODO: this reference to `tree` may not be correct if we've swapped out the tree
                 var modelNode = findNode(tree, node.id);
                 if (nodeClickDoesAdd) {
                     var subtree = nodeWithId(node.id, tree.treeId);
@@ -292,7 +293,7 @@ function init() {
     
     var leftModel = generateTree();
     var centerModel = cloneTree(leftModel);
-    var rightModel = generateTree();
+    var rightModel = cloneTree(leftModel);
 
     var leftST = initSpacetree(leftModel, 'infovis1');    
     var centerST = initSpacetree(centerModel, 'infovis2');
@@ -316,13 +317,33 @@ function init() {
                     }
                     changeHandler();
                 } else if (String.fromCharCode(e.keyCode) == 's') {
-                    console.log('Merge left');
+                    console.log('Merge from left');
                     centerModel = cloneTree(leftModel, centerModel.treeId);
                     centerST.morph(centerModel, {
                         hideLabels: false,
                         type: 'fade',
                         onComplete: function() {
                             centerST.refresh();
+                        }
+                    });
+                } else if (String.fromCharCode(e.keyCode) == 'f') {
+                    console.log('Merge from right');
+                    centerModel = cloneTree(rightModel, centerModel.treeId);
+                    centerST.morph(centerModel, {
+                        hideLabels: false,
+                        type: 'fade',
+                        onComplete: function() {
+                            centerST.refresh();
+                        }
+                    });
+                } else if (String.fromCharCode(e.keyCode) == 'd') {
+                    console.log('Merge from right');
+                    leftModel = cloneTree(centerModel, leftModel.treeId);
+                    leftST.morph(leftModel, {
+                        hideLabels: false,
+                        type: 'fade',
+                        onComplete: function() {
+                            leftST.refresh();
                         }
                     });
                 }
