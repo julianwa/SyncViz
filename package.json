@@ -1,0 +1,22 @@
+{
+  "name": "SyncViz",
+  "version": "1.0.0",
+  "description": "Sync visualization",
+  "main": "index.js",
+  "scripts": {
+    "test": "test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/julianwa/SyncViz.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/julianwa/SyncViz/issues"
+  },
+  "homepage": "https://github.com/julianwa/SyncViz",
+  "dependencies": {
+    "diff-merge-patch": "0.6.0"
+  }
+}
