@@ -265,6 +265,16 @@ function initSpacetree(tree, injectInfo) {
     return st;
 }
 
+function updateSpacetree(model, spacetree) {
+    spacetree.morph(model, {
+        hideLabels: false,
+        type: 'fade',
+        onComplete: function() {
+            spacetree.refresh();
+        }
+    });
+}
+
 function init() {
         
     //Implement a node rendering function called 'nodeline' that plots a straight line
@@ -295,9 +305,9 @@ function init() {
     var centerModel = cloneTree(leftModel);
     var rightModel = cloneTree(leftModel);
 
-    var leftST = initSpacetree(leftModel, 'infovis1');    
-    var centerST = initSpacetree(centerModel, 'infovis2');
-    var rightST = initSpacetree(rightModel, 'infovis3');
+    var leftSpacetree = initSpacetree(leftModel, 'infovis1');    
+    var centerSpacetree = initSpacetree(centerModel, 'infovis2');
+    var rightSpacetree = initSpacetree(rightModel, 'infovis3');
 
     (function configureRadioSelector() {
         var add = document.getElementById('r-add'), 
@@ -319,33 +329,15 @@ function init() {
                 } else if (String.fromCharCode(e.keyCode) == 's') {
                     console.log('Merge from left');
                     centerModel = cloneTree(leftModel, centerModel.treeId);
-                    centerST.morph(centerModel, {
-                        hideLabels: false,
-                        type: 'fade',
-                        onComplete: function() {
-                            centerST.refresh();
-                        }
-                    });
+                    updateSpacetree(centerModel, centerSpacetree);
                 } else if (String.fromCharCode(e.keyCode) == 'f') {
                     console.log('Merge from right');
                     centerModel = cloneTree(rightModel, centerModel.treeId);
-                    centerST.morph(centerModel, {
-                        hideLabels: false,
-                        type: 'fade',
-                        onComplete: function() {
-                            centerST.refresh();
-                        }
-                    });
+                    updateSpacetree(centerModel, centerSpacetree);
                 } else if (String.fromCharCode(e.keyCode) == 'd') {
                     console.log('Merge from right');
                     leftModel = cloneTree(centerModel, leftModel.treeId);
-                    leftST.morph(leftModel, {
-                        hideLabels: false,
-                        type: 'fade',
-                        onComplete: function() {
-                            leftST.refresh();
-                        }
-                    });
+                    updateSpaceTree(leftModel, leftSpacetree);
                 }
             });
         });
