@@ -175,7 +175,6 @@
 
     function AddJournalCommand(journalId) {
       this.action = function(model) {
-        console.log("addJournal " + journalId);
         return model.addJournalWithId(journalId);
       };
     }

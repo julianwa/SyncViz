@@ -77,7 +77,6 @@ class root.PaperModel extends Model
 class root.AddJournalCommand extends Command
     constructor: (journalId) ->
         @action = (model) ->
-            console.log("addJournal #{journalId}") 
             model.addJournalWithId journalId
             
 class root.RemoveJournalWithIdCommand extends Command
