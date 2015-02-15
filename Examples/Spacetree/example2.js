@@ -88,10 +88,11 @@ function initSpacetree(model, injectInfo) {
             label.innerHTML = node.name.substring(4);
             label.onclick = function() {
                 if (nodeClickDoesAdd) {
-                    model.addJournal();
+                    var guid = createGuid();
+                    model.executeCommand(new AddJournalCommand(guid));
                 } else {
                     var id = node.id.split(" ")[1];
-                    model.removeJournalWithId(id);
+                    model.executeCommand(new RemoveJournalWithIdCommand(id))
                 }
                 
                 selfRef.spaceTree.refresh();
