@@ -28,17 +28,14 @@ class root.Model extends ModelNode
         childrenJSON = (child._exportSpacetreeJSON(@id, index) for child, index in @children)
         return id: @id, name: "000 #{@label}", children: childrenJSON
         
-    copyFrom: (model) ->
-        @children = []
-        for otherChild in model.children
-            child = jQuery.extend(true, {}, otherChild)
-            @children.push child
+    fastForwardMerge: (model) ->
+        @executeCommands(model.newerCommandsThan(@currentRevision()))
+        if @currentRevision() isnt model.currentRevision()
+            throw new Error "Current revision values should match"
     
     executeCommand: (command) ->
         @executedCommands().push command
         command.action(this)
-        revisionPrefix = "*"
-        console.log "#{@id} now at revision #{revisionPrefix}#{@executedCommands().length}"
         
     executeCommands: (commands) ->
         @executeCommand command for command in commands
@@ -46,11 +43,9 @@ class root.Model extends ModelNode
     currentRevision: -> @_executedCommands.length
     
     newerCommandsThan: (baseRevision) ->
-        baseRevision = 0 if baseRevision < 0
-        baseReivision = @_executedCommand.length if baseRevision > @_executedCommands.length
-        if baseRevision < @_executedCommands.length
-            return @_executedCommands.slice(baseRevision, @_executedCommands.length)
-        return []
+        if baseRevision < 0 or baseRevision > @_executedCommands.length
+            throw new Error "newerCommandsThan: baseRevision out of range: baseRevision: #{baseRevision} numCommands: #{@_executedCommands.length}"
+        return @_executedCommands.slice(baseRevision, @_executedCommands.length)
         
 ## Paper Model
 
@@ -79,24 +74,80 @@ class root.RemoveJournalWithIdCommand extends Command
 ## Client / Server
 
 class root.PaperModelClient
-    constructor: (id) ->
-        @serverModel = new PaperModel("client - server - #{id}")
-        @model = new PaperModel("client - local - #{id}")
-    pullFromServer: (server) ->
-        commands = server.pullCommands @serverModel.currentRevision()
-        @serverModel.executeCommands commands
-    takeServer: ->
-        @model.copyFrom @serverModel
+    constructor: (@id) ->
+        @serverModel = new PaperModel("clientS_#{@id}")
+        @localModel = new PaperModel("clientL_#{@id}")
+        @localModelBaseRevision = 0
+        
+    localModelHasModifications: -> @localModel.currentRevision() isnt @localModelBaseRevision
+    localModelNeedsRebase: ->
+        # If there's no new commands from the server, then local never needs a rebase.
+        if @serverModel.currentRevision() is @localModelBaseRevision
+            return false
+        # Otherwise, local only needs a rebase if there are local modifications.
+        return @localModelHasModifications()
+
+    push: (server) ->
+        console.log("PUSH CLIENT: #{@id}")
+        
+        if @localModelNeedsRebase()
+            console.log("   Local model needs rebase. Aborting.")
+            return
+        
+        baseRevision = @serverModel.currentRevision()
+        commands = @localModel.newerCommandsThan @serverModel.currentRevision()
+        if commands.length > 0
+            console.log("    attempting #{baseRevision} -> #{@localModel.currentRevision()}")
+            if server.pushCommands(baseRevision, commands)
+                console.log("   ACCEPTED")
+                @serverModel.fastForwardMerge @localModel
+                @localModelBaseRevision = @localModel.currentRevision()
+            else
+                console.log("   REJECTED")
+                # TODO: handle fast-forward push rejection
+        else
+            console.log("    No commands to push.")
+
+    fetch: (server, logPrefix) ->
+        logPrefix = logPrefix ? ""
+        console.log(logPrefix + "FETCH CLIENT: #{@id}")
+        commands = server.newerCommandsThan @serverModel.currentRevision()
+        if commands.length > 0
+            baseRevision = @serverModel.currentRevision()
+            @serverModel.executeCommands commands
+            console.log(logPrefix + "    server: #{baseRevision} -> #{@serverModel.currentRevision()}")
+        else
+            console.log(logPrefix + "    No new commands")
+
+    pull: (server) -> 
+        console.log("PULL CLIENT: #{@id}")
+        @fetch(server, "    ")
+
+        if @localModelNeedsRebase()
+            console.log("    Local model needs rebase. Aborting.")
+            return
+
+        if @localModelBaseRevision is @serverModel.currentRevision()
+            console.log("    Nothing to do")
+            return
+
+        @localModel.fastForwardMerge @serverModel
+
+        if @localModelBaseRevision is @localModel.currentRevision()
+            console.log("    Nothing to do")
+        else
+            console.log("    local: #{@localModelBaseRevision} -> #{@localModel.currentRevision()}")     
+            @localModelBaseRevision = @localModel.currentRevision()
             
 class root.PaperModelServer
     constructor: ->
         @model = new PaperModel("server")
     pushCommands: (baseRevision, commands) ->
-        if baseRevision is model.currentRevision()
+        if baseRevision is @model.currentRevision()
             @model.executeCommands commands
             return true
         return false
-    pullCommands: (baseRevision) -> @model.newerCommandsThan baseRevision
+    newerCommandsThan: (baseRevision) -> @model.newerCommandsThan baseRevision
             
 
 ## Misc

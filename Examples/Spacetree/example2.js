@@ -190,9 +190,9 @@ function init() {
     var server = new PaperModelServer();
     var rightClient = new PaperModelClient("right");
 
-    var leftClientSpacetree = initSpacetree(leftClient.model, 'infovis1');    
+    var leftClientSpacetree = initSpacetree(leftClient.localModel, 'infovis1');    
     var serverSpacetree = initSpacetree(server.model, 'infovis2');
-    var rightClientSpacetree = initSpacetree(rightClient.model, 'infovis3');
+    var rightClientSpacetree = initSpacetree(rightClient.localModel, 'infovis3');
 
     (function configureRadioSelector() {
         var add = document.getElementById('r-add'), 
@@ -212,21 +212,15 @@ function init() {
                     }
                     changeHandler();
                 } else if (String.fromCharCode(e.keyCode) == 's') {
-                    console.log('Merge from left');
-                    server.model.copyFrom(leftClient.model);
+                    leftClient.push(server);
                     serverSpacetree.refresh();
                 } else if (String.fromCharCode(e.keyCode) == 'f') {
-                    console.log('Merge from right');
-                    server.model.copyFrom(rightModel);
+                    rightClient.push(server);
                     serverSpacetree.refresh();
                 } else if (String.fromCharCode(e.keyCode) == 'd') {
-                    console.log('Pulling from server');
-                    leftClient.pullFromServer(server);
-                    leftClient.takeServer();
+                    leftClient.pull(server);
                     leftClientSpacetree.refresh();
-                    
-                    rightClient.pullFromServer(server);
-                    rightClient.takeServer();
+                    rightClient.pull(server);
                     rightClientSpacetree.refresh();
                 }
             });
