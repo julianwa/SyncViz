@@ -12,6 +12,9 @@ class root.ModelNode
     constructor: (@id, @label) ->
         @children = []
         
+    reset: ->
+        @children.length = 0
+        
     _exportSpacetreeJSON: (modelId, childIndex) ->
         childrenJSON = (child._exportSpacetreeJSON(modelId, index) for child, index in @children)
         return id: "#{modelId} #{@id}", name: "#{zeroPad(childIndex, 3)} #{@label}", children: childrenJSON
@@ -24,6 +27,10 @@ class root.Model extends ModelNode
         @_executedCommands = []
     executedCommands: -> @_executedCommands
     
+    reset: ->
+        super
+        @_executedCommands.length = 0
+        
     exportSpacetreeJSON: ->
         childrenJSON = (child._exportSpacetreeJSON(@id, index) for child, index in @children)
         return id: @id, name: "000 #{@label}", children: childrenJSON
@@ -69,7 +76,8 @@ class root.PaperModel extends Model
 
 class root.AddJournalCommand extends Command
     constructor: (journalId) ->
-        @action = (model) -> 
+        @action = (model) ->
+            console.log("addJournal #{journalId}") 
             model.addJournalWithId journalId
             
 class root.RemoveJournalWithIdCommand extends Command
@@ -107,7 +115,7 @@ class root.PaperModelClient
         console.log("PUSH CLIENT: #{@id}")
         
         if @localModelNeedsRebase()
-            console.log("   Local model needs rebase. Aborting.")
+            console.log("   Local model needs rebase. Please do a pull. Aborting.")
             return
         
         baseRevision = @serverModel.currentRevision()
@@ -140,20 +148,32 @@ class root.PaperModelClient
         @fetch(server, "    ")
 
         if @localModelNeedsRebase()
-            console.log("    Local model needs rebase. Aborting.")
-            return
-
-        if @localModelBaseRevision is @serverModel.currentRevision()
-            console.log("    Nothing to do")
-            return
-
-        @localModel.fastForwardMerge @serverModel
-
-        if @localModelBaseRevision is @localModel.currentRevision()
-            console.log("    Nothing to do")
+            @rebaseLocalModel()
+            console.log("    local rebase: #{@localModelBaseRevision} -> #{@localModel.currentRevision()}")     
+            @localModelBaseRevision = @serverModel.currentRevision()
         else
-            console.log("    local: #{@localModelBaseRevision} -> #{@localModel.currentRevision()}")     
-            @localModelBaseRevision = @localModel.currentRevision()
+            if @localModelBaseRevision is @serverModel.currentRevision()
+                console.log("    Nothing to do")
+                return
+
+            @localModel.fastForwardMerge @serverModel
+
+            if @localModelBaseRevision is @localModel.currentRevision()
+                console.log("    Nothing to do")
+            else
+                console.log("    local fast-forward: #{@localModelBaseRevision} -> #{@localModel.currentRevision()}")     
+                @localModelBaseRevision = @localModel.currentRevision()
+    
+    rebaseLocalModel: ->        
+        rebasedModel = new PaperModel("clientR_#{@id}")
+        rebasedModel.fastForwardMerge @serverModel;
+        
+        commandsToRebase = @localModel.newerCommandsThan @localModelBaseRevision
+        console.log("    Rebasing #{commandsToRebase.length} local command(s)")
+        rebasedModel.executeCommands(commandsToRebase)
+        
+        @localModel.reset()
+        @localModel.fastForwardMerge rebasedModel
             
 class root.PaperModelServer
     constructor: ->
