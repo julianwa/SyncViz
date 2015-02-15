@@ -54,22 +54,38 @@ class root.PaperModel extends Model
         super(id, 'USER')
     addJournalWithId: (id) ->
         @children.push new ModelNode(id, "JRNL:#{id}")
-    removeJournal: ->
-        @children.splice(@children.length-1, 1);
-    removeJournalWithId: (id) ->
-        @children = @children.filter (journal) -> journal.id isnt id
+    removeJournalWithId: (journalId) ->
+        @children = @children.filter (journal) -> journal.id isnt journalId
+    addPageWithId: (journalId, pageId) ->
+        matchingJournals = @children.filter (journal) -> journal.id is journalId
+        return if matchingJournals.length == 0
+        throw new Error "matched more than one journals" if matchingJournals.length > 1
+        matchingJournals[0].children.push new ModelNode(pageId, "PAGE:#{pageId}")
+    removePageWithId: (pageId) ->
+        for journal in @children
+            journal.children = journal.children.filter (page) -> page.id isnt pageId
         
 ## Commands
 
 class root.AddJournalCommand extends Command
-    constructor: (id) ->
+    constructor: (journalId) ->
         @action = (model) -> 
-            model.addJournalWithId id
+            model.addJournalWithId journalId
             
 class root.RemoveJournalWithIdCommand extends Command
-    constructor: (id) ->
+    constructor: (journalId) ->
         @action = (model) ->
-            model.removeJournalWithId id
+            model.removeJournalWithId journalId
+            
+class root.AddPageCommand extends Command
+    constructor: (journalId, pageId) ->
+        @action = (model) ->
+            model.addPageWithId journalId, pageId
+
+class root.RemovePageWithIdCommand extends Command
+    constructor: (pageId) ->
+        @action = (model) ->
+            model.removePageWithId pageId
             
 ## Client / Server
 

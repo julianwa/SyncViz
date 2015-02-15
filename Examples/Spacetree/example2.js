@@ -84,15 +84,28 @@ function initSpacetree(model, injectInfo) {
         //Use this method to add event handlers and styles to
         //your node.
         onCreateLabel: function(label, node) {
+            var nodeName = node.name.substring(4);
             label.id = node.id;            
-            label.innerHTML = node.name.substring(4);
+            label.innerHTML = nodeName;
             label.onclick = function() {
                 if (nodeClickDoesAdd) {
-                    var guid = createGuid();
-                    model.executeCommand(new AddJournalCommand(guid));
+                    var id = node.id.split(" ")[1];
+
+                    if (nodeName == "USER") {
+                       model.executeCommand(new AddJournalCommand(createGuid())); 
+                    }
+                    else {
+                        model.executeCommand(new AddPageCommand(id, createGuid())); 
+                    }
+                    // 
                 } else {
                     var id = node.id.split(" ")[1];
-                    model.executeCommand(new RemoveJournalWithIdCommand(id))
+                    var name = node.name.split(" ")[1];
+                    if (name.indexOf('JRNL') == 0) {
+                        model.executeCommand(new RemoveJournalWithIdCommand(id));
+                    } else if (name.indexOf('PAGE') == 0) {
+                        model.executeCommand(new RemovePageWithIdCommand(id));
+                    }
                 }
                 
                 selfRef.spaceTree.refresh();
