@@ -26,122 +26,16 @@ var Log = {
   }
 };
 
-function guid() {
-  function s4() {
-    return Math.floor((1 + Math.random()) * 0x10000)
-               .toString(16)
-               .substring(1);
-  }
-  return s4(); // + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
-}
-
 Array.prototype.insert = function (index, item) {
   this.splice(index, 0, item);
 };
 
-function zeroPad(num, places) {
-  var zero = places - num.toString().length + 1;
-  return Array(+(zero > 0 && zero)).join("0") + num;
-}
-
-function findNode(tree, nodeId) {
-    if (tree.id == nodeId) {
-        return tree;
-    }
-    var i = 0;
-    for (; i < tree.children.length; i++) {
-        var result = findNode(tree.children[i], nodeId);   
-        if (result)
-        {
-            return result;
-        }
-    }
-    return null;
-}
-
-function nodeWithId(rawId, treeId) {
-    return {
-        rawId: rawId,
-        treeId: treeId,
-        id: treeId + ' ' + rawId,
-        name: null,
-        displayName: rawId,
-        data: {},
-        parent: null,
-        children: [],
-        
-        updateChildrenNames: function() {
-            var i = 0;
-            for (; i < this.children.length; i++) {
-                this.children[i].name = zeroPad(i, 3) + ' ' + this.children[i].displayName;
-            }
-        },
-        
-        updateIdRecursive: function() {
-            this.id = this.treeId + ' ' + this.rawId;
-            var i = 0;
-            for (; i < this.children.length; i++) {
-                this.children[i].updateIdRecursive();
-            }
-        }
-    };
-}
-
-function insertNode(tree, node, index) {
-    tree.children.insert(index, node);
-    node.parent = tree;
-    node.treeId = node.parent.treeId;
-    tree.updateChildrenNames();
-}
-
-function addNode(tree, node) {
-    insertNode(tree, node, tree.children.length);
-}
-
-function removeNode(node) {
-    var i = 0;
-    for (; i < node.parent.children.length; i++) {
-        if (node.parent.children[i].id == node.id) {
-            node.parent.children.splice(i, 1);
-            break;
-        }
-    }
-    node.parent.updateChildrenNames();
-    node.parent = null;
-}
-
-function generateTree() {
-    var id = 'USER:' + guid();
-    var treeId = guid();
-    var tree = nodeWithId(id, treeId);
-    tree.name = '000 ' + tree.displayName;
-    // var i = 0;
-    // for (i = 0; i < 10; i++) {
-    //     var node = nodeWithId(i, treeId);
-    //     addNode(tree, node);
-    // }
-    return tree;
-}
-
-function cloneTree(tree, clonedTreeId) {
-    if (!clonedTreeId) {
-        clonedTreeId = guid();
-    }
-    var clonedTree = nodeWithId(tree.rawId, clonedTreeId);
-    var i = 0;
-    for (; i < tree.children.length; i++) {
-        addNode(clonedTree, cloneTree(tree.children[i], clonedTreeId));
-    }
-    clonedTree.updateChildrenNames();
+function initSpacetree(model, injectInfo) {
     
-    if (!clonedTree.parent) {
-        clonedTree.name = '000 ' + clonedTree.rawId;
-    }
-
-    return clonedTree;
-}
-
-function initSpacetree(tree, injectInfo) {
+    var selfRef = {
+        spaceTree: {}
+    };
+    
     //init Spacetree
     //Create a new ST instance
     var st = new $jit.ST({
@@ -193,24 +87,14 @@ function initSpacetree(tree, injectInfo) {
             label.id = node.id;            
             label.innerHTML = node.name.substring(4);
             label.onclick = function() {
-                // TODO: this reference to `tree` may not be correct if we've swapped out the tree
-                var modelNode = findNode(tree, node.id);
                 if (nodeClickDoesAdd) {
-                    var subtree = nodeWithId(node.id, tree.treeId);
-                    var prefix = node.id.indexOf('USER') == -1 ? 'PAGE:' : 'JRNL:';
-                    var id = prefix + guid();
-                    addNode(modelNode, nodeWithId(id));
+                    model.addJournal();
                 } else {
-                    removeNode(modelNode);
+                    var id = node.id.split(" ")[1];
+                    model.removeJournalWithId(id);
                 }
                 
-                st.morph(tree, {
-                    hideLabels: false,
-                    type: 'fade',
-                    onComplete: function() {
-                        st.refresh();
-                    }
-                });
+                selfRef.spaceTree.refresh();
             };
             //set label styles
             var style = label.style;
@@ -257,22 +141,22 @@ function initSpacetree(tree, injectInfo) {
             }
         }
     });
+    selfRef.spaceTree = st;
+    st.refresh = function() {
+        this.morph(model.exportSpacetreeJSON(), {
+            hideLabels: false,
+            type: 'fade',
+            onComplete: function() {
+                st.refresh();
+            }                
+        });
+    }
 
-    st.loadJSON(tree);
+    st.loadJSON(model.exportSpacetreeJSON());
     st.compute();
     st.onClick(st.root);
     
     return st;
-}
-
-function updateSpacetree(model, spacetree) {
-    spacetree.morph(model, {
-        hideLabels: false,
-        type: 'fade',
-        onComplete: function() {
-            spacetree.refresh();
-        }
-    });
 }
 
 function init() {
@@ -301,9 +185,9 @@ function init() {
         }   
     });
     
-    var leftModel = generateTree();
-    var centerModel = cloneTree(leftModel);
-    var rightModel = cloneTree(leftModel);
+    var leftModel = new PaperModel('leftModel');
+    var centerModel = new PaperModel('centerModel');
+    var rightModel = new PaperModel('rightModel');
 
     var leftSpacetree = initSpacetree(leftModel, 'infovis1');    
     var centerSpacetree = initSpacetree(centerModel, 'infovis2');
@@ -328,16 +212,16 @@ function init() {
                     changeHandler();
                 } else if (String.fromCharCode(e.keyCode) == 's') {
                     console.log('Merge from left');
-                    centerModel = cloneTree(leftModel, centerModel.treeId);
-                    updateSpacetree(centerModel, centerSpacetree);
+                    centerModel.copyFrom(leftModel);
+                    centerSpacetree.refresh();
                 } else if (String.fromCharCode(e.keyCode) == 'f') {
                     console.log('Merge from right');
-                    centerModel = cloneTree(rightModel, centerModel.treeId);
-                    updateSpacetree(centerModel, centerSpacetree);
+                    centerModel.copyFrom(rightModel);
+                    centerSpacetree.refresh();
                 } else if (String.fromCharCode(e.keyCode) == 'd') {
                     console.log('Merge from right');
-                    leftModel = cloneTree(centerModel, leftModel.treeId);
-                    updateSpaceTree(leftModel, leftSpacetree);
+                    leftModel.copyFrom(centerModel);
+                    leftSpacetree.refresh();
                 }
             });
         });
