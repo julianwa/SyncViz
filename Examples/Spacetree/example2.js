@@ -186,13 +186,13 @@ function init() {
         }   
     });
     
-    var leftModel = new PaperModel('leftModel');
-    var centerModel = new PaperModel('centerModel');
-    var rightModel = new PaperModel('rightModel');
+    var leftClient = new PaperModelClient("left");
+    var server = new PaperModelServer();
+    var rightClient = new PaperModelClient("right");
 
-    var leftSpacetree = initSpacetree(leftModel, 'infovis1');    
-    var centerSpacetree = initSpacetree(centerModel, 'infovis2');
-    var rightSpacetree = initSpacetree(rightModel, 'infovis3');
+    var leftClientSpacetree = initSpacetree(leftClient.model, 'infovis1');    
+    var serverSpacetree = initSpacetree(server.model, 'infovis2');
+    var rightClientSpacetree = initSpacetree(rightClient.model, 'infovis3');
 
     (function configureRadioSelector() {
         var add = document.getElementById('r-add'), 
@@ -213,16 +213,21 @@ function init() {
                     changeHandler();
                 } else if (String.fromCharCode(e.keyCode) == 's') {
                     console.log('Merge from left');
-                    centerModel.copyFrom(leftModel);
-                    centerSpacetree.refresh();
+                    server.model.copyFrom(leftClient.model);
+                    serverSpacetree.refresh();
                 } else if (String.fromCharCode(e.keyCode) == 'f') {
                     console.log('Merge from right');
-                    centerModel.copyFrom(rightModel);
-                    centerSpacetree.refresh();
+                    server.model.copyFrom(rightModel);
+                    serverSpacetree.refresh();
                 } else if (String.fromCharCode(e.keyCode) == 'd') {
-                    console.log('Merge from right');
-                    leftModel.copyFrom(centerModel);
-                    leftSpacetree.refresh();
+                    console.log('Pulling from server');
+                    leftClient.pullFromServer(server);
+                    leftClient.takeServer();
+                    leftClientSpacetree.refresh();
+                    
+                    rightClient.pullFromServer(server);
+                    rightClient.takeServer();
+                    rightClientSpacetree.refresh();
                 }
             });
         });

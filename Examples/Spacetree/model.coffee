@@ -21,7 +21,8 @@ class root.ModelNode
 class root.Model extends ModelNode
     constructor: (id, label) ->
         super(id, label)
-        @executedCommands = []
+        @_executedCommands = []
+    executedCommands: -> @_executedCommands
     
     exportSpacetreeJSON: ->
         childrenJSON = (child._exportSpacetreeJSON(@id, index) for child, index in @children)
@@ -34,10 +35,22 @@ class root.Model extends ModelNode
             @children.push child
     
     executeCommand: (command) ->
-        @executedCommands.push command
+        @executedCommands().push command
         command.action(this)
         revisionPrefix = "*"
-        console.log "#{@id} now at revision #{revisionPrefix}#{@executedCommands.length}"
+        console.log "#{@id} now at revision #{revisionPrefix}#{@executedCommands().length}"
+        
+    executeCommands: (commands) ->
+        @executeCommand command for command in commands
+        
+    currentRevision: -> @_executedCommands.length
+    
+    newerCommandsThan: (baseRevision) ->
+        baseRevision = 0 if baseRevision < 0
+        baseReivision = @_executedCommand.length if baseRevision > @_executedCommands.length
+        if baseRevision < @_executedCommands.length
+            return @_executedCommands.slice(baseRevision, @_executedCommands.length)
+        return []
         
 ## Paper Model
 
@@ -62,6 +75,29 @@ class root.RemoveJournalWithIdCommand extends Command
     constructor: (id) ->
         @action = (model) ->
             model.removeJournalWithId id
+            
+## Client / Server
+
+class root.PaperModelClient
+    constructor: (id) ->
+        @serverModel = new PaperModel("client - server - #{id}")
+        @model = new PaperModel("client - local - #{id}")
+    pullFromServer: (server) ->
+        commands = server.pullCommands @serverModel.currentRevision()
+        @serverModel.executeCommands commands
+    takeServer: ->
+        @model.copyFrom @serverModel
+            
+class root.PaperModelServer
+    constructor: ->
+        @model = new PaperModel("server")
+    pushCommands: (baseRevision, commands) ->
+        if baseRevision is model.currentRevision()
+            @model.executeCommands commands
+            return true
+        return false
+    pullCommands: (baseRevision) -> @model.newerCommandsThan baseRevision
+            
 
 ## Misc
 
