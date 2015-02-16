@@ -35,17 +35,22 @@ class root.Model extends ModelNode
         childrenJSON = (child._exportSpacetreeJSON(@id, index) for child, index in @children)
         return id: @id, name: "000 #{@label}", children: childrenJSON
         
-    fastForwardMerge: (model) ->
-        @executeCommands(model.newerCommandsThan(@currentRevision()))
-        if @currentRevision() isnt model.currentRevision()
+    fastForwardMerge: (model, maxRevision) ->
+        @executeCommands(model.newerCommandsThan(@currentRevision()), maxRevision)
+        
+        maxRevision = maxRevision ? model.currentRevision()
+        maxRevision = model.currentRevision() if maxRevision > model.currentRevision()
+        if @currentRevision() isnt maxRevision
             throw new Error "Current revision values should match"
     
     executeCommand: (command) ->
         @executedCommands().push command
         command.action(this)
         
-    executeCommands: (commands) ->
-        @executeCommand command for command in commands
+    executeCommands: (commands, maxRevision) ->
+        for command in commands
+            if not maxRevision? or @currentRevision() < maxRevision
+                @executeCommand command
         
     currentRevision: -> @_executedCommands.length
     
@@ -63,6 +68,11 @@ class root.PaperModel extends Model
         @children.push new ModelNode(id, "JRNL:#{id}")
     removeJournalWithId: (journalId) ->
         @children = @children.filter (journal) -> journal.id isnt journalId
+    moveJournal: (fromIndex, toIndex) ->
+        @children.move(fromIndex, toIndex)
+    moveJournalWithId: (journalId, toIndex) ->
+        index = (journal.id for journal in @children).indexOf(journalId)
+        @moveJournal index, toIndex if index isnt -1
     addPageWithId: (journalId, pageId) ->
         matchingJournals = @children.filter (journal) -> journal.id is journalId
         return if matchingJournals.length == 0
@@ -78,6 +88,16 @@ class root.AddJournalCommand extends Command
     constructor: (journalId) ->
         @action = (model) ->
             model.addJournalWithId journalId
+
+class root.MoveJournalCommand extends Command
+    constructor: (fromIndex, toIndex) ->
+        @action = (model) ->
+            model.moveJournal fromIndex, toIndex
+            
+class root.MoveJournalWithIdCommand extends Command
+    constructor: (journalId, toIndex) ->
+        @action = (model) ->
+            model.moveJournalWithId journalId, toIndex
             
 class root.RemoveJournalWithIdCommand extends Command
     constructor: (journalId) ->
@@ -165,15 +185,42 @@ class root.PaperModelClient
     
     rebaseLocalModel: ->        
         rebasedModel = new PaperModel("clientR_#{@id}")
-        rebasedModel.fastForwardMerge @serverModel;
+        rebasedModel.fastForwardMerge @serverModel, @localModelBaseRevision
         
-        commandsToRebase = @localModel.newerCommandsThan @localModelBaseRevision
-        console.log("    Rebasing #{commandsToRebase.length} local command(s)")
-        rebasedModel.executeCommands(commandsToRebase)
+        @mergeJournals rebasedModel, @localModel, @serverModel
         
         @localModel.reset()
         @localModel.fastForwardMerge rebasedModel
-            
+        
+    mergeJournals: (modelBase, modelA, modelB) ->
+        # Use diff-merge-patch to do a 3-way merge of modelBase, modelA, and modelB
+        journalsBase = (journal.id for journal in modelBase.children)
+        journalsA = (journal.id for journal in modelA.children)
+        journalsB = (journal.id for journal in modelB.children)
+        journalsMerged = @mergeOrderedSet journalsBase, journalsA, journalsB
+        console.log("    journalsMerged: #{journalsMerged}")
+        
+        # Remove journals that are in the model but not in journalsMerged
+        journalsToRemove = journalsBase.filter (journalId) -> journalsMerged.indexOf(journalId) == -1
+        console.log("    journalsToRemove: #{journalsToRemove}")
+        modelBase.executeCommand(new RemoveJournalWithIdCommand(journalId)) for journalId in journalsToRemove
+        
+        # Add journals that are not in the model but that are in journalsMerged
+        journalsToAdd = journalsMerged.filter (journalId) -> journalsBase.indexOf(journalId) == -1
+        console.log("    journalsToAdd: #{journalsToAdd}")
+        modelBase.executeCommand(new AddJournalCommand(journalId)) for journalId in journalsToAdd
+        
+        # Rearrange the journals in the model to match journalsMerged
+        for journalId, index in journalsMerged
+            modelBase.executeCommand(new MoveJournalWithIdCommand(journalId, index))
+    
+    mergeOrderedSet: (base, A, B) ->
+        diffA = diffmergepatch.orderedSet.diff(base, A);
+        diffB = diffmergepatch.orderedSet.diff(base, B);
+        mergedDiff = diffmergepatch.orderedSet.merge([diffA, diffB])
+        resolvedDiff = diffmergepatch.orderedSet.resolve(mergedDiff, 0)
+        return diffmergepatch.orderedSet.patch(base, resolvedDiff)
+                    
 class root.PaperModelServer
     constructor: ->
         @model = new PaperModel("server")
@@ -196,3 +243,9 @@ root.createGuid = () ->
         return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
     return s4()
     #return s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
+    
+Array.prototype.move = (fromIndex, toIndex) ->
+    throw new Error "Array.move: fromIndex out of bounds" if fromIndex < 0 or fromIndex >= @length
+    throw new Error "Array.move: toIndex out of bounds" if toIndex < 0 or toIndex >= @length
+    @splice(toIndex, 0, this.splice(fromIndex, 1)[0])
+    return this

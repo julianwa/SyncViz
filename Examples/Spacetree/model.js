@@ -85,9 +85,13 @@
       };
     };
 
-    Model.prototype.fastForwardMerge = function(model) {
-      this.executeCommands(model.newerCommandsThan(this.currentRevision()));
-      if (this.currentRevision() !== model.currentRevision()) {
+    Model.prototype.fastForwardMerge = function(model, maxRevision) {
+      this.executeCommands(model.newerCommandsThan(this.currentRevision()), maxRevision);
+      maxRevision = maxRevision != null ? maxRevision : model.currentRevision();
+      if (maxRevision > model.currentRevision()) {
+        maxRevision = model.currentRevision();
+      }
+      if (this.currentRevision() !== maxRevision) {
         throw new Error("Current revision values should match");
       }
     };
@@ -97,12 +101,16 @@
       return command.action(this);
     };
 
-    Model.prototype.executeCommands = function(commands) {
+    Model.prototype.executeCommands = function(commands, maxRevision) {
       var command, _i, _len, _results;
       _results = [];
       for (_i = 0, _len = commands.length; _i < _len; _i++) {
         command = commands[_i];
-        _results.push(this.executeCommand(command));
+        if ((maxRevision == null) || this.currentRevision() < maxRevision) {
+          _results.push(this.executeCommand(command));
+        } else {
+          _results.push(void 0);
+        }
       }
       return _results;
     };
@@ -137,6 +145,27 @@
       return this.children = this.children.filter(function(journal) {
         return journal.id !== journalId;
       });
+    };
+
+    PaperModel.prototype.moveJournal = function(fromIndex, toIndex) {
+      return this.children.move(fromIndex, toIndex);
+    };
+
+    PaperModel.prototype.moveJournalWithId = function(journalId, toIndex) {
+      var index, journal;
+      index = ((function() {
+        var _i, _len, _ref, _results;
+        _ref = this.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          journal = _ref[_i];
+          _results.push(journal.id);
+        }
+        return _results;
+      }).call(this)).indexOf(journalId);
+      if (index !== -1) {
+        return this.moveJournal(index, toIndex);
+      }
     };
 
     PaperModel.prototype.addPageWithId = function(journalId, pageId) {
@@ -180,6 +209,32 @@
     }
 
     return AddJournalCommand;
+
+  })(Command);
+
+  root.MoveJournalCommand = (function(_super) {
+    __extends(MoveJournalCommand, _super);
+
+    function MoveJournalCommand(fromIndex, toIndex) {
+      this.action = function(model) {
+        return model.moveJournal(fromIndex, toIndex);
+      };
+    }
+
+    return MoveJournalCommand;
+
+  })(Command);
+
+  root.MoveJournalWithIdCommand = (function(_super) {
+    __extends(MoveJournalWithIdCommand, _super);
+
+    function MoveJournalWithIdCommand(journalId, toIndex) {
+      this.action = function(model) {
+        return model.moveJournalWithId(journalId, toIndex);
+      };
+    }
+
+    return MoveJournalWithIdCommand;
 
   })(Command);
 
@@ -301,14 +356,79 @@
     };
 
     PaperModelClient.prototype.rebaseLocalModel = function() {
-      var commandsToRebase, rebasedModel;
+      var rebasedModel;
       rebasedModel = new PaperModel("clientR_" + this.id);
-      rebasedModel.fastForwardMerge(this.serverModel);
-      commandsToRebase = this.localModel.newerCommandsThan(this.localModelBaseRevision);
-      console.log("    Rebasing " + commandsToRebase.length + " local command(s)");
-      rebasedModel.executeCommands(commandsToRebase);
+      rebasedModel.fastForwardMerge(this.serverModel, this.localModelBaseRevision);
+      this.mergeJournals(rebasedModel, this.localModel, this.serverModel);
       this.localModel.reset();
       return this.localModel.fastForwardMerge(rebasedModel);
+    };
+
+    PaperModelClient.prototype.mergeJournals = function(modelBase, modelA, modelB) {
+      var index, journal, journalId, journalsA, journalsB, journalsBase, journalsMerged, journalsToAdd, journalsToRemove, _i, _j, _k, _len, _len1, _len2, _results;
+      journalsBase = (function() {
+        var _i, _len, _ref, _results;
+        _ref = modelBase.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          journal = _ref[_i];
+          _results.push(journal.id);
+        }
+        return _results;
+      })();
+      journalsA = (function() {
+        var _i, _len, _ref, _results;
+        _ref = modelA.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          journal = _ref[_i];
+          _results.push(journal.id);
+        }
+        return _results;
+      })();
+      journalsB = (function() {
+        var _i, _len, _ref, _results;
+        _ref = modelB.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          journal = _ref[_i];
+          _results.push(journal.id);
+        }
+        return _results;
+      })();
+      journalsMerged = this.mergeOrderedSet(journalsBase, journalsA, journalsB);
+      console.log("    journalsMerged: " + journalsMerged);
+      journalsToRemove = journalsBase.filter(function(journalId) {
+        return journalsMerged.indexOf(journalId) === -1;
+      });
+      console.log("    journalsToRemove: " + journalsToRemove);
+      for (_i = 0, _len = journalsToRemove.length; _i < _len; _i++) {
+        journalId = journalsToRemove[_i];
+        modelBase.executeCommand(new RemoveJournalWithIdCommand(journalId));
+      }
+      journalsToAdd = journalsMerged.filter(function(journalId) {
+        return journalsBase.indexOf(journalId) === -1;
+      });
+      console.log("    journalsToAdd: " + journalsToAdd);
+      for (_j = 0, _len1 = journalsToAdd.length; _j < _len1; _j++) {
+        journalId = journalsToAdd[_j];
+        modelBase.executeCommand(new AddJournalCommand(journalId));
+      }
+      _results = [];
+      for (index = _k = 0, _len2 = journalsMerged.length; _k < _len2; index = ++_k) {
+        journalId = journalsMerged[index];
+        _results.push(modelBase.executeCommand(new MoveJournalWithIdCommand(journalId, index)));
+      }
+      return _results;
+    };
+
+    PaperModelClient.prototype.mergeOrderedSet = function(base, A, B) {
+      var diffA, diffB, mergedDiff, resolvedDiff;
+      diffA = diffmergepatch.orderedSet.diff(base, A);
+      diffB = diffmergepatch.orderedSet.diff(base, B);
+      mergedDiff = diffmergepatch.orderedSet.merge([diffA, diffB]);
+      resolvedDiff = diffmergepatch.orderedSet.resolve(mergedDiff, 0);
+      return diffmergepatch.orderedSet.patch(base, resolvedDiff);
     };
 
     return PaperModelClient;
@@ -348,6 +468,17 @@
       return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
     };
     return s4();
+  };
+
+  Array.prototype.move = function(fromIndex, toIndex) {
+    if (fromIndex < 0 || fromIndex >= this.length) {
+      throw new Error("Array.move: fromIndex out of bounds");
+    }
+    if (toIndex < 0 || toIndex >= this.length) {
+      throw new Error("Array.move: toIndex out of bounds");
+    }
+    this.splice(toIndex, 0, this.splice(fromIndex, 1)[0]);
+    return this;
   };
 
 }).call(this);

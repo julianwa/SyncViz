@@ -1,5 +1,5 @@
 var labelType, useGradients, nativeTextSupport, animate;
-var nodeClickDoesAdd = true;
+var nodeClickAction = 'add';
 
 (function() {
   var ua = navigator.userAgent,
@@ -88,23 +88,34 @@ function initSpacetree(model, injectInfo) {
             label.id = node.id;            
             label.innerHTML = nodeName;
             label.onclick = function() {
-                if (nodeClickDoesAdd) {
-                    var id = node.id.split(" ")[1];
-
+                var id = node.id.split(" ")[1];
+                var name = node.name.split(" ")[1];
+                var childIndex = Number(node.name.split(" ")[0]);
+                
+                if (nodeClickAction == 'add') {
                     if (nodeName == "USER") {
                        model.executeCommand(new AddJournalCommand(createGuid())); 
                     }
                     else {
-                        model.executeCommand(new AddPageCommand(id, createGuid())); 
+                        model.executeCommand(new AddPageCommand(id, createGuid()));
                     }
                     // 
-                } else {
-                    var id = node.id.split(" ")[1];
-                    var name = node.name.split(" ")[1];
+                } else if (nodeClickAction == 'remove') {
                     if (name.indexOf('JRNL') == 0) {
                         model.executeCommand(new RemoveJournalWithIdCommand(id));
                     } else if (name.indexOf('PAGE') == 0) {
                         model.executeCommand(new RemovePageWithIdCommand(id));
+                    }
+                } else if (nodeClickAction == 'moveUp') {
+                    if (name.indexOf('JRNL') == 0) {
+                        var toIndex = childIndex - 1;
+                        if (toIndex < 0) toIndex = 0;
+                        model.executeCommand(new MoveJournalCommand(childIndex, toIndex));
+                    }
+                } else if (nodeClickAction == 'moveDown') {
+                    if (name.indexOf('JRNL') == 0) {
+                        var toIndex = childIndex + 1;
+                        model.executeCommand(new MoveJournalCommand(childIndex, toIndex));
                     }
                 }
                 
@@ -209,11 +220,21 @@ function init() {
 
     (function configureRadioSelector() {
         var add = document.getElementById('r-add'), 
-        remove = document.getElementById('r-remove');
+        remove = document.getElementById('r-remove'),
+        moveUp = document.getElementById('r-move-up'),
+        moveDown = document.getElementById('r-move-down');
         function changeHandler() {
-            nodeClickDoesAdd = add.checked;
+            if (add.checked) {
+                nodeClickAction = 'add';
+            } else if (remove.checked) {
+                nodeClickAction = 'remove';
+            } else if (moveUp.checked) {
+                nodeClickAction = 'moveUp';
+            } else if (moveDown.checked) {
+                nodeClickAction = 'moveDown';
+            }
         };
-        onchange = add.onchange = remove.onchange = changeHandler;
+        onchange = add.onchange = remove.onchange = moveUp.onchange = moveDown.onChange = changeHandler;
     
         $(document).ready(function() {
             $(document).keypress(function(e) {
@@ -221,6 +242,10 @@ function init() {
                     if (add.checked) {
                         remove.checked = true;
                     } else if (remove.checked) {
+                        moveUp.checked = true;
+                    } else if (moveUp.checked) {
+                        moveDown.checked = true;
+                    } else if (moveDown.checked) {
                         add.checked = true;
                     }
                     changeHandler();
