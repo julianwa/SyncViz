@@ -64,6 +64,9 @@ class root.Model extends ModelNode
 class root.PaperModel extends Model
     constructor: (id) ->
         super(id, 'USER')
+    journalWithId: (journalId) ->
+        journal = @children.filter (journal) -> journal.id is journalId
+        return if journal.length > 0 then journal[0] else null
     addJournalWithId: (id) ->
         @children.push new ModelNode(id, "JRNL:#{id}")
     removeJournalWithId: (journalId) ->
@@ -81,6 +84,13 @@ class root.PaperModel extends Model
     removePageWithId: (pageId) ->
         for journal in @children
             journal.children = journal.children.filter (page) -> page.id isnt pageId
+    movePage: (journalId, fromIndex, toIndex) ->
+        journal = @journalWithId journalId
+        journal.children.move(fromIndex, toIndex)
+    movePageWithId: (journalId, pageId, toIndex) ->
+        journal = @journalWithId journalId
+        index = (page.id for page in @children).indexOf(pageId)
+        @movePage journalId, index, toIndex if index isnt -1
         
 ## Commands
 
@@ -113,6 +123,16 @@ class root.RemovePageWithIdCommand extends Command
     constructor: (pageId) ->
         @action = (model) ->
             model.removePageWithId pageId
+            
+class root.MovePageCommand extends Command
+    constructor: (journalId, fromIndex, toIndex) ->
+        @action = (model) ->
+            model.movePage journalId, fromIndex, toIndex
+            
+class root.MovePageWithIdCommand extends Command
+    constructor: (journalId, pageId, toIndex) ->
+        @action = (model) ->
+            model.movePageWithId journalId, pageId, toIndex
             
 ## Client / Server
 
@@ -184,35 +204,64 @@ class root.PaperModelClient
                 @localModelBaseRevision = @localModel.currentRevision()
     
     rebaseLocalModel: ->        
+        baseModel = new PaperModel("clientB_#{@id}")
+        baseModel.fastForwardMerge @serverModel, @localModelBaseRevision
         rebasedModel = new PaperModel("clientR_#{@id}")
-        rebasedModel.fastForwardMerge @serverModel, @localModelBaseRevision
+        rebasedModel.fastForwardMerge @serverModel
         
-        @mergeJournals rebasedModel, @localModel, @serverModel
+        @mergeJournals baseModel, rebasedModel, @localModel, @serverModel
         
         @localModel.reset()
         @localModel.fastForwardMerge rebasedModel
         
-    mergeJournals: (modelBase, modelA, modelB) ->
-        # Use diff-merge-patch to do a 3-way merge of modelBase, modelA, and modelB
-        journalsBase = (journal.id for journal in modelBase.children)
-        journalsA = (journal.id for journal in modelA.children)
-        journalsB = (journal.id for journal in modelB.children)
-        journalsMerged = @mergeOrderedSet journalsBase, journalsA, journalsB
-        console.log("    journalsMerged: #{journalsMerged}")
+    mergeJournals: (baseModel, rebasedModel, localModel, serverModel) ->
+        # Use diff-merge-patch to do a 3-way merge of baseModel, modelRemove, and serverModel
+        baseJournals = (journal.id for journal in baseModel.children)
+        localJournals = (journal.id for journal in localModel.children)
+        serverJournals = (journal.id for journal in serverModel.children)
+        mergedJournals = @mergeOrderedSet baseJournals, localJournals, serverJournals
+        console.log("    mergedJournals: #{mergedJournals}")
         
-        # Remove journals that are in the model but not in journalsMerged
-        journalsToRemove = journalsBase.filter (journalId) -> journalsMerged.indexOf(journalId) == -1
+        # Remove journals that are in the serverModel but not in mergedJournals
+        journalsToRemove = serverJournals.filter (journalId) -> mergedJournals.indexOf(journalId) == -1
         console.log("    journalsToRemove: #{journalsToRemove}")
-        modelBase.executeCommand(new RemoveJournalWithIdCommand(journalId)) for journalId in journalsToRemove
+        rebasedModel.executeCommand(new RemoveJournalWithIdCommand(journalId)) for journalId in journalsToRemove
         
-        # Add journals that are not in the model but that are in journalsMerged
-        journalsToAdd = journalsMerged.filter (journalId) -> journalsBase.indexOf(journalId) == -1
+        # Add journals that are not in the serverModel but that are in mergedJournals
+        journalsToAdd = mergedJournals.filter (journalId) -> serverJournals.indexOf(journalId) == -1
         console.log("    journalsToAdd: #{journalsToAdd}")
-        modelBase.executeCommand(new AddJournalCommand(journalId)) for journalId in journalsToAdd
+        rebasedModel.executeCommand(new AddJournalCommand(journalId)) for journalId in journalsToAdd
         
-        # Rearrange the journals in the model to match journalsMerged
-        for journalId, index in journalsMerged
-            modelBase.executeCommand(new MoveJournalWithIdCommand(journalId, index))
+        # Rearrange the journals in the model to match mergedJournals
+        for journalId, index in mergedJournals
+            rebasedModel.executeCommand(new MoveJournalWithIdCommand(journalId, index))
+            @mergePages baseModel, rebasedModel, localModel, serverModel, journalId
+    
+    mergePages: (baseModel, rebasedModel, localModel, serverModel, journalId) ->
+        
+        baseJournal = baseModel.journalWithId journalId
+        localJournal = localModel.journalWithId journalId
+        serverJournal = serverModel.journalWithId journalId
+
+        basePages = (page.id for page in (if baseJournal then baseJournal.children else []))
+        localPages = (page.id for page in (if localJournal then localJournal.children else []))
+        serverPages = (page.id for page in (if serverJournal then serverJournal.children else []))
+        mergedPages = @mergeOrderedSet basePages, localPages, serverPages
+        console.log("    mergedPages: #{mergedPages}")
+
+        # Remove pages that are in the serverModel but not in mergedPages
+        pagesToRemove = serverPages.filter (pageId) -> mergedPages.indexOf(pageId) == -1
+        console.log("    pagesToRemove: #{pagesToRemove}")
+        rebasedModel.executeCommand(new RemovePageWithIdCommand(pageId)) for pageId in pagesToRemove
+
+        # Add pages that are not in the serverModel but that are in mergedPages
+        pagesToAdd = mergedPages.filter (pageId) -> serverPages.indexOf(pageId) == -1
+        console.log("    pagesToAdd: #{pagesToAdd}")
+        rebasedModel.executeCommand(new AddPageCommand(journalId, pageId)) for pageId in pagesToAdd
+
+        # Rearrange the pages in the journal to match mergedPages
+        for pageId, index in mergedPages
+            rebasedModel.executeCommand(new MovePageWithIdCommand(journalId, pageId, index))
     
     mergeOrderedSet: (base, A, B) ->
         diffA = diffmergepatch.orderedSet.diff(base, A);

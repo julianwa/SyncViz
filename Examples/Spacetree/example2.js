@@ -88,7 +88,10 @@ function initSpacetree(model, injectInfo) {
             label.id = node.id;            
             label.innerHTML = nodeName;
             label.onclick = function() {
-                var id = node.id.split(" ")[1];
+                function idFromNode(node) {
+                    return node.id.split(" ")[1];
+                }
+                var id = idFromNode(node);
                 var name = node.name.split(" ")[1];
                 var childIndex = Number(node.name.split(" ")[0]);
                 
@@ -111,11 +114,20 @@ function initSpacetree(model, injectInfo) {
                         var toIndex = childIndex - 1;
                         if (toIndex < 0) toIndex = 0;
                         model.executeCommand(new MoveJournalCommand(childIndex, toIndex));
+                    } else if (name.indexOf('PAGE') == 0) {
+                        journalId = idFromNode(node.getParents()[0])
+                        var toIndex = childIndex - 1;
+                        if (toIndex < 0) toIndex = 0;
+                        model.executeCommand(new MovePageCommand(journalId, childIndex, toIndex));
                     }
                 } else if (nodeClickAction == 'moveDown') {
                     if (name.indexOf('JRNL') == 0) {
                         var toIndex = childIndex + 1;
                         model.executeCommand(new MoveJournalCommand(childIndex, toIndex));
+                    } else if (name.indexOf('PAGE') == 0) {
+                        journalId = idFromNode(node.getParents()[0])
+                        var toIndex = childIndex + 1;
+                        model.executeCommand(new MovePageCommand(journalId, childIndex, toIndex));
                     }
                 }
                 

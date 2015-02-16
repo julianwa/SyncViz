@@ -137,6 +137,18 @@
       PaperModel.__super__.constructor.call(this, id, 'USER');
     }
 
+    PaperModel.prototype.journalWithId = function(journalId) {
+      var journal;
+      journal = this.children.filter(function(journal) {
+        return journal.id === journalId;
+      });
+      if (journal.length > 0) {
+        return journal[0];
+      } else {
+        return null;
+      }
+    };
+
     PaperModel.prototype.addJournalWithId = function(id) {
       return this.children.push(new ModelNode(id, "JRNL:" + id));
     };
@@ -193,6 +205,30 @@
         }));
       }
       return _results;
+    };
+
+    PaperModel.prototype.movePage = function(journalId, fromIndex, toIndex) {
+      var journal;
+      journal = this.journalWithId(journalId);
+      return journal.children.move(fromIndex, toIndex);
+    };
+
+    PaperModel.prototype.movePageWithId = function(journalId, pageId, toIndex) {
+      var index, journal, page;
+      journal = this.journalWithId(journalId);
+      index = ((function() {
+        var _i, _len, _ref, _results;
+        _ref = this.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          page = _ref[_i];
+          _results.push(page.id);
+        }
+        return _results;
+      }).call(this)).indexOf(pageId);
+      if (index !== -1) {
+        return this.movePage(journalId, index, toIndex);
+      }
     };
 
     return PaperModel;
@@ -277,6 +313,32 @@
 
   })(Command);
 
+  root.MovePageCommand = (function(_super) {
+    __extends(MovePageCommand, _super);
+
+    function MovePageCommand(journalId, fromIndex, toIndex) {
+      this.action = function(model) {
+        return model.movePage(journalId, fromIndex, toIndex);
+      };
+    }
+
+    return MovePageCommand;
+
+  })(Command);
+
+  root.MovePageWithIdCommand = (function(_super) {
+    __extends(MovePageWithIdCommand, _super);
+
+    function MovePageWithIdCommand(journalId, pageId, toIndex) {
+      this.action = function(model) {
+        return model.movePageWithId(journalId, pageId, toIndex);
+      };
+    }
+
+    return MovePageWithIdCommand;
+
+  })(Command);
+
   root.PaperModelClient = (function() {
     function PaperModelClient(_at_id) {
       this.id = _at_id;
@@ -356,19 +418,21 @@
     };
 
     PaperModelClient.prototype.rebaseLocalModel = function() {
-      var rebasedModel;
+      var baseModel, rebasedModel;
+      baseModel = new PaperModel("clientB_" + this.id);
+      baseModel.fastForwardMerge(this.serverModel, this.localModelBaseRevision);
       rebasedModel = new PaperModel("clientR_" + this.id);
-      rebasedModel.fastForwardMerge(this.serverModel, this.localModelBaseRevision);
-      this.mergeJournals(rebasedModel, this.localModel, this.serverModel);
+      rebasedModel.fastForwardMerge(this.serverModel);
+      this.mergeJournals(baseModel, rebasedModel, this.localModel, this.serverModel);
       this.localModel.reset();
       return this.localModel.fastForwardMerge(rebasedModel);
     };
 
-    PaperModelClient.prototype.mergeJournals = function(modelBase, modelA, modelB) {
-      var index, journal, journalId, journalsA, journalsB, journalsBase, journalsMerged, journalsToAdd, journalsToRemove, _i, _j, _k, _len, _len1, _len2, _results;
-      journalsBase = (function() {
+    PaperModelClient.prototype.mergeJournals = function(baseModel, rebasedModel, localModel, serverModel) {
+      var baseJournals, index, journal, journalId, journalsToAdd, journalsToRemove, localJournals, mergedJournals, serverJournals, _i, _j, _k, _len, _len1, _len2, _results;
+      baseJournals = (function() {
         var _i, _len, _ref, _results;
-        _ref = modelBase.children;
+        _ref = baseModel.children;
         _results = [];
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
           journal = _ref[_i];
@@ -376,9 +440,9 @@
         }
         return _results;
       })();
-      journalsA = (function() {
+      localJournals = (function() {
         var _i, _len, _ref, _results;
-        _ref = modelA.children;
+        _ref = localModel.children;
         _results = [];
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
           journal = _ref[_i];
@@ -386,9 +450,9 @@
         }
         return _results;
       })();
-      journalsB = (function() {
+      serverJournals = (function() {
         var _i, _len, _ref, _results;
-        _ref = modelB.children;
+        _ref = serverModel.children;
         _results = [];
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
           journal = _ref[_i];
@@ -396,28 +460,90 @@
         }
         return _results;
       })();
-      journalsMerged = this.mergeOrderedSet(journalsBase, journalsA, journalsB);
-      console.log("    journalsMerged: " + journalsMerged);
-      journalsToRemove = journalsBase.filter(function(journalId) {
-        return journalsMerged.indexOf(journalId) === -1;
+      mergedJournals = this.mergeOrderedSet(baseJournals, localJournals, serverJournals);
+      console.log("    mergedJournals: " + mergedJournals);
+      journalsToRemove = serverJournals.filter(function(journalId) {
+        return mergedJournals.indexOf(journalId) === -1;
       });
       console.log("    journalsToRemove: " + journalsToRemove);
       for (_i = 0, _len = journalsToRemove.length; _i < _len; _i++) {
         journalId = journalsToRemove[_i];
-        modelBase.executeCommand(new RemoveJournalWithIdCommand(journalId));
+        rebasedModel.executeCommand(new RemoveJournalWithIdCommand(journalId));
       }
-      journalsToAdd = journalsMerged.filter(function(journalId) {
-        return journalsBase.indexOf(journalId) === -1;
+      journalsToAdd = mergedJournals.filter(function(journalId) {
+        return serverJournals.indexOf(journalId) === -1;
       });
       console.log("    journalsToAdd: " + journalsToAdd);
       for (_j = 0, _len1 = journalsToAdd.length; _j < _len1; _j++) {
         journalId = journalsToAdd[_j];
-        modelBase.executeCommand(new AddJournalCommand(journalId));
+        rebasedModel.executeCommand(new AddJournalCommand(journalId));
       }
       _results = [];
-      for (index = _k = 0, _len2 = journalsMerged.length; _k < _len2; index = ++_k) {
-        journalId = journalsMerged[index];
-        _results.push(modelBase.executeCommand(new MoveJournalWithIdCommand(journalId, index)));
+      for (index = _k = 0, _len2 = mergedJournals.length; _k < _len2; index = ++_k) {
+        journalId = mergedJournals[index];
+        rebasedModel.executeCommand(new MoveJournalWithIdCommand(journalId, index));
+        _results.push(this.mergePages(baseModel, rebasedModel, localModel, serverModel, journalId));
+      }
+      return _results;
+    };
+
+    PaperModelClient.prototype.mergePages = function(baseModel, rebasedModel, localModel, serverModel, journalId) {
+      var baseJournal, basePages, index, localJournal, localPages, mergedPages, page, pageId, pagesToAdd, pagesToRemove, serverJournal, serverPages, _i, _j, _k, _len, _len1, _len2, _results;
+      baseJournal = baseModel.journalWithId(journalId);
+      localJournal = localModel.journalWithId(journalId);
+      serverJournal = serverModel.journalWithId(journalId);
+      basePages = (function() {
+        var _i, _len, _ref, _results;
+        _ref = (baseJournal ? baseJournal.children : []);
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          page = _ref[_i];
+          _results.push(page.id);
+        }
+        return _results;
+      })();
+      localPages = (function() {
+        var _i, _len, _ref, _results;
+        _ref = (localJournal ? localJournal.children : []);
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          page = _ref[_i];
+          _results.push(page.id);
+        }
+        return _results;
+      })();
+      serverPages = (function() {
+        var _i, _len, _ref, _results;
+        _ref = (serverJournal ? serverJournal.children : []);
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          page = _ref[_i];
+          _results.push(page.id);
+        }
+        return _results;
+      })();
+      mergedPages = this.mergeOrderedSet(basePages, localPages, serverPages);
+      console.log("    mergedPages: " + mergedPages);
+      pagesToRemove = serverPages.filter(function(pageId) {
+        return mergedPages.indexOf(pageId) === -1;
+      });
+      console.log("    pagesToRemove: " + pagesToRemove);
+      for (_i = 0, _len = pagesToRemove.length; _i < _len; _i++) {
+        pageId = pagesToRemove[_i];
+        rebasedModel.executeCommand(new RemovePageWithIdCommand(pageId));
+      }
+      pagesToAdd = mergedPages.filter(function(pageId) {
+        return serverPages.indexOf(pageId) === -1;
+      });
+      console.log("    pagesToAdd: " + pagesToAdd);
+      for (_j = 0, _len1 = pagesToAdd.length; _j < _len1; _j++) {
+        pageId = pagesToAdd[_j];
+        rebasedModel.executeCommand(new AddPageCommand(journalId, pageId));
+      }
+      _results = [];
+      for (index = _k = 0, _len2 = mergedPages.length; _k < _len2; index = ++_k) {
+        pageId = mergedPages[index];
+        _results.push(rebasedModel.executeCommand(new MovePageWithIdCommand(journalId, pageId, index)));
       }
       return _results;
     };
