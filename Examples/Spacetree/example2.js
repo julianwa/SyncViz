@@ -88,6 +88,11 @@ function initSpacetree(model, injectInfo) {
             label.id = node.id;            
             label.innerHTML = nodeName;
             label.onclick = function() {
+                
+                if (model.id == 'server') {
+                    return;
+                }
+                
                 function idFromNode(node) {
                     return node.id.split(" ")[1];
                 }
